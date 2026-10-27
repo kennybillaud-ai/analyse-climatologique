@@ -399,6 +399,7 @@ const compass = d => d == null ? '–' : dirs[Math.round(d / 22.5) % 16];
 const n0 = v => v == null ? '–' : Math.round(v);
 const n1 = v => v == null ? '–' : v.toFixed(1).replace('.', ',');
 const maxBy = (rows, k) => rows.reduce((a, r) => r[k] != null && (a == null || r[k] > a[k]) ? r : a, null);
+const atThr = (g, t) => t != null && g != null && Math.round(g) >= t;
 const sum = (rows, k) => rows.reduce((a, r) => a + (r[k] || 0), 0);
 const xnote = (t, err) => { const m = $('xmsg'); m.className = 'xmsg' + (err ? ' err' : ''); m.textContent = t; };
 const note = (t, err) => { const m = $('msg'); m.className = err ? 'err' : ''; m.textContent = t; };
@@ -414,7 +415,7 @@ function daily(rows, thr, rd) {
     const rain = rd && rd[d] ? rd[d].v : sum(r, 'rain');
     return { d, mg: maxBy(r, 'gust'), mw: maxBy(r, 'wind'), mr, rain, rainHot: rain >= RAIN_D || (mr && mr.rain >= RAIN_H),
       storms: r.filter(x => x.storm).length, stormPot: r.filter(x => x.stormPot).length, hail: r.filter(x => x.hail).length, cape: maxBy(r, 'cape'),
-      over: thr != null ? r.filter(x => x.gust != null && x.gust >= thr).length : 0, empty: !r.some(x => x.gust != null) };
+      over: thr != null ? r.filter(x => atThr(x.gust, thr)).length : 0, empty: !r.some(x => x.gust != null) };
   });
 }
 
@@ -447,7 +448,7 @@ function chart(rows, thr, sin) {
   return s + line('wind', '#2f5d7c') + line('gust', '#16242e') + '</svg>' + legend(thr, maxR);
 }
 
-const flagsH = (r, o) => ({ w: o.vent && o.thr != null && r.gust != null && r.gust >= o.thr, r: o.pluie && r.rain != null && r.rain >= RAIN_H, h: o.grele && r.hail, f: o.foudre && (r.storm || r.stormPot) });
+const flagsH = (r, o) => ({ w: o.vent && atThr(r.gust, o.thr), r: o.pluie && r.rain != null && r.rain >= RAIN_H, h: o.grele && r.hail, f: o.foudre && (r.storm || r.stormPot) });
 const flagsD = (x, o) => ({ w: o.vent && x.over > 0, r: o.pluie && x.rainHot, h: o.grele && x.hail > 0, f: o.foudre && (x.storms > 0 || x.stormPot > 0) });
 const stormCell = x => x.storms || x.stormPot ? `${x.storms}${x.stormPot ? ' (+' + x.stormPot + ' poss.)' : ''}` : '';
 const hl = f => f ? ' class="hl"' : '';
@@ -521,7 +522,7 @@ function kpis() {
   const { dS, days, sin, o } = state;
   const bf = days.filter(x => x.d < sin).reduce((a, x) => a + (x.rain || 0), 0), af = days.filter(x => x.d > sin).reduce((a, x) => a + (x.rain || 0), 0);
   $('kpis').innerHTML = [
-    [n0(dS.mg.gust) + ' km/h', `Rafale max à ${dS.mg.hour} (${compass(dS.mg.dir)})`, o.thr != null && dS.mg.gust >= o.thr],
+    [n0(dS.mg.gust) + ' km/h', `Rafale max à ${dS.mg.hour} (${compass(dS.mg.dir)})`, atThr(dS.mg.gust, o.thr)],
     [n0(dS.mw && dS.mw.wind) + ' km/h', 'Vent moyen max', 0],
     [n1(dS.rain) + ' mm', 'Pluie du jour du sinistre', o.pluie && dS.rainHot],
     [n1(bf) + ' mm', 'Pluie cumulée, 5 jours précédents', 0],
@@ -534,14 +535,14 @@ function kpis() {
 
 function lines() {
   const { dS, o, sin, days, w } = state, thr = o.thr, a = w.auto.s;
-  const windHot = thr != null && dS.mg.gust >= thr, rainHot = dS.rainHot;
+  const windHot = atThr(dS.mg.gust, thr), rainHot = dS.rainHot;
   const peak = maxBy(state.rows, 'gust'), overDays = days.filter(x => x.over);
   return [
-    { lab: 'Vent', hi: o.vent, al: o.vent && windHot, t: `rafales jusqu’à ${n0(dS.mg.gust)} km/h à ${dS.mg.hour} (${compass(dS.mg.dir)}, modèle ${a.gust}), vent moyen jusqu’à ${n0(dS.mw && dS.mw.wind)} km/h` + (thr != null ? ` : ${windHot ? `<b>seuil de ${thr} km/h dépassé</b> à ${dS.over} heure(s)` : `sous le seuil de ${thr} km/h`}` : '') + '.' },
+    { lab: 'Vent', hi: o.vent, al: o.vent && windHot, t: `rafales jusqu’à ${n0(dS.mg.gust)} km/h à ${dS.mg.hour} (${compass(dS.mg.dir)}, modèle ${a.gust}), vent moyen jusqu’à ${n0(dS.mw && dS.mw.wind)} km/h` + (thr != null ? ` : ${windHot ? `<b>seuil de ${thr} km/h atteint ou dépassé</b> à ${dS.over} heure(s)` : `sous le seuil de ${thr} km/h`}` : '') + '.' },
     { lab: 'Pluie', hi: o.pluie, al: o.pluie && rainHot, t: `${n1(dS.rain)} mm sur la journée (modèle ${a.rain}), intensité jusqu’à ${n1(dS.mr && dS.mr.rain)} mm/h` + (dS.mr ? ` à ${dS.mr.hour}` : '') + '.' },
     { lab: 'Grêle', hi: o.grele, al: o.grele && state.hs.has, t: `${state.hs.verdict} <em>(indicateur du modèle)</em>` },
     { lab: 'Foudre', hi: o.foudre, al: o.foudre && state.ss.has, t: `${state.ss.verdict} <em>(indicateur du modèle)</em>` },
-    { lab: '', per: true, t: `Sur les 11 jours : rafale maximale de ${n0(peak.gust)} km/h le ${fmtD(peak.date)} à ${peak.hour}` + (thr != null ? `, seuil de ${thr} km/h dépassé ${overDays.length} jour(s)${overDays.length ? ' (' + overDays.map(x => fmtD(x.d)).join(', ') + ')' : ''}` : '') + '.' }
+    { lab: '', per: true, t: `Sur les 11 jours : rafale maximale de ${n0(peak.gust)} km/h le ${fmtD(peak.date)} à ${peak.hour}` + (thr != null ? `, seuil de ${thr} km/h atteint ou dépassé ${overDays.length} jour(s)${overDays.length ? ' (' + overDays.map(x => fmtD(x.d)).join(', ') + ')' : ''}` : '') + '.' }
   ];
 }
 
@@ -590,6 +591,8 @@ function render(res, sin) {
     '</table><p style="margin:10px 0 0;color:#5d6b76;font-size:.88rem">La valeur retenue est la plus élevée de chaque colonne. AROME (Météo-France) et ICON-D2 ont une maille de 2 km environ et rendent mieux les orages locaux ; ERA5 (maille de 25 km environ) lisse les extrêmes et sous-estime souvent les rafales et la pluie intense.</p>';
   $('hail').innerHTML = state.hs.long;
   $('storm').innerHTML = state.ss.long + lmapBlock();
+  state.mapLog = [];
+  state.mapP = lmUrls().ok ? mapBytes(lmUrls().img, state.mapLog) : null;
   const { lat, lon } = res.g;
   $('src').innerHTML = `<b>Lieu :</b> ${res.g.label} (${lat.toFixed(4)}, ${lon.toFixed(4)}) · localisation : ${PREC[res.g.type] || 'à vérifier'} · <a href="https://www.openstreetmap.org/?mlat=${lat}&mlon=${lon}#map=16/${lat}/${lon}" target="_blank" rel="noopener">vérifier sur la carte</a><br>` +
     `<b>Sources utilisées :</b> ${res.w.src} ; adresse : ${res.g.by}${lmUrls().ok ? ' ; carte des impacts de foudre : Blitzortung via LightningMaps' : ''}. Heures locales du lieu.`;
@@ -628,22 +631,24 @@ function selection() {
   return { on, any: ['synth', 'model', 'chart', 'daily', 'hourly', 'hail', 'storm'].some(on) };
 }
 
-async function fetchImg(url, ms) {
-  const c = new AbortController(), t = setTimeout(() => c.abort(), ms || 9000);
-  try {
-    const r = await fetch(url, { signal: c.signal });
-    if (!r.ok) throw new Error('HTTP ' + r.status);
-    const buf = await r.arrayBuffer(), a = new Uint8Array(buf);
-    const png = a[0] === 0x89 && a[1] === 0x50, jpg = a[0] === 0xff && a[1] === 0xd8;
-    if (!png && !jpg) throw new Error('format');
-    return { buf, png };
-  } finally { clearTimeout(t); }
+async function fetchImg(url, signal) {
+  const r = await fetch(url, { signal });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  const buf = await r.arrayBuffer(), a = new Uint8Array(buf);
+  const png = a[0] === 0x89 && a[1] === 0x50, jpg = a[0] === 0xff && a[1] === 0xd8;
+  if (!png && !jpg) throw new Error('réponse non image');
+  return { buf, png };
 }
-async function mapBytes(img) {
-  // la carte ne contient que la date : aucune adresse n'est transmise aux relais
-  const tries = [img, 'https://images.weserv.nl/?output=png&url=' + encodeURIComponent(img), 'https://api.allorigins.win/raw?url=' + encodeURIComponent(img)];
-  for (const t of tries) { try { return await fetchImg(t); } catch (e) {} }
-  return null;
+// tente le téléchargement direct et plusieurs relais en même temps ; le premier qui réussit l'emporte
+// (l'adresse de la carte ne contient que la date : aucune adresse de sinistre n'est transmise)
+async function mapBytes(img, log) {
+  const E = encodeURIComponent(img);
+  const tries = [['direct', img], ['relais weserv', 'https://images.weserv.nl/?output=png&url=' + E], ['relais wsrv', 'https://wsrv.nl/?output=png&url=' + E],
+    ['relais allorigins', 'https://api.allorigins.win/raw?url=' + E], ['relais corsproxy', 'https://corsproxy.io/?url=' + E]];
+  const ctrls = tries.map(() => new AbortController()), timer = setTimeout(() => ctrls.forEach(c => c.abort()), 25000);
+  try {
+    return await Promise.any(tries.map(([n, u], i) => fetchImg(u, ctrls[i].signal).catch(e => { if (log) log.push(n + ' : ' + (e.name === 'AbortError' ? 'délai dépassé' : (e.message || 'refusé'))); throw e; })));
+  } catch (e) { return null; } finally { clearTimeout(timer); ctrls.forEach(c => c.abort()); }
 }
 
 async function exportPdf() {
@@ -787,7 +792,7 @@ async function exportPdf() {
       h2('Valeurs les plus défavorables retenues');
       const rr = [];
       [['Vent', o.vent, [['gust', 'Rafale max', 'km/h', n0], ['wind', 'Vent moyen max', 'km/h', n0]]], ['Pluie', o.pluie, [['rain', 'Pluie du jour', 'mm', n1], ['rmax', 'Intensité max', 'mm/h', n1]]]].forEach(([lab, hi, ks]) => ks.filter(([k]) => au.v[k] != null).forEach(([k, lb, u, f], i) => {
-        const hot = hi && ((k === 'gust' && thr != null && au.v.gust >= thr) || ((k === 'rain' || k === 'rmax') && state.dS.rainHot));
+        const hot = hi && ((k === 'gust' && atThr(au.v.gust, thr)) || ((k === 'rain' || k === 'rmax') && state.dS.rainHot));
         rr.push({ bg: hot ? ALBG : null, c: [{ t: i === 0 ? lab + (hi ? ' •' : '') : '', b: true }, lb, { t: f(au.v[k]) + ' ' + u, b: true }, au.s[k]] });
       }));
       rr.push({ bg: o.grele && state.hs.has ? ALBG : null, c: [{ t: 'Grêle' + (o.grele ? ' •' : ''), b: true }, { t: plain(state.hs.verdict) + ' (indicateur du modèle)', span: 3 }] });
@@ -801,7 +806,7 @@ async function exportPdf() {
         Object.entries(w.per).map(([n, p]) => ({ c: [n, n0(p.gust), n0(p.wind), n1(p.rain), n1(p.rmax)] })));
       const { dS, days } = state;
       const bf = days.filter(x => x.d < sin).reduce((a, x) => a + (x.rain || 0), 0), af = days.filter(x => x.d > sin).reduce((a, x) => a + (x.rain || 0), 0);
-      kpiGrid([[n0(dS.mg.gust) + ' km/h', `Rafale max à ${dS.mg.hour} (${compass(dS.mg.dir)})`, thr != null && dS.mg.gust >= thr], [n0(dS.mw && dS.mw.wind) + ' km/h', 'Vent moyen max', 0], [n1(dS.rain) + ' mm', 'Pluie du jour du sinistre', o.pluie && dS.rainHot], [n1(bf) + ' mm', 'Pluie cumulée, 5 jours précédents', 0], [n1(af) + ' mm', 'Pluie cumulée, 5 jours suivants', 0], [dS.storms ? dS.storms + ' h' : dS.stormPot ? dS.stormPot + ' h possible(s)' : 'Aucun', 'Orage signalé par le modèle', o.foudre && (dS.storms || dS.stormPot)], [dS.hail ? dS.hail + ' h' : 'Aucun', 'Grêle signalée par le modèle', o.grele && dS.hail], [dS.cape ? n0(dS.cape.cape) + ' J/kg' : '–', 'Instabilité (CAPE) max', 0]]);
+      kpiGrid([[n0(dS.mg.gust) + ' km/h', `Rafale max à ${dS.mg.hour} (${compass(dS.mg.dir)})`, atThr(dS.mg.gust, thr)], [n0(dS.mw && dS.mw.wind) + ' km/h', 'Vent moyen max', 0], [n1(dS.rain) + ' mm', 'Pluie du jour du sinistre', o.pluie && dS.rainHot], [n1(bf) + ' mm', 'Pluie cumulée, 5 jours précédents', 0], [n1(af) + ' mm', 'Pluie cumulée, 5 jours suivants', 0], [dS.storms ? dS.storms + ' h' : dS.stormPot ? dS.stormPot + ' h possible(s)' : 'Aucun', 'Orage signalé par le modèle', o.foudre && (dS.storms || dS.stormPot)], [dS.hail ? dS.hail + ' h' : 'Aucun', 'Grêle signalée par le modèle', o.grele && dS.hail], [dS.cape ? n0(dS.cape.cape) + ' J/kg' : '–', 'Instabilité (CAPE) max', 0]]);
     }
     if (on('chart')) { need(260); h2(`Période analysée : du ${dmin} au ${dmax}`); chartPdf(rows, thr, sin); }
     if (on('daily')) {
@@ -828,7 +833,9 @@ async function exportPdf() {
       const u = lmUrls();
       if (u.ok) {
         try {
-          const m = await mapBytes(u.img);
+          xnote('Génération du PDF… récupération de la carte de la foudre.');
+          state.mapLog = [];
+          const m = (await state.mapP) || (state.mapP = await mapBytes(u.img, state.mapLog));
           if (!m) throw new Error('carte inaccessible');
           const img = m.png ? await doc.embedPng(m.buf) : await doc.embedJpg(m.buf);
           const sc = Math.min(CW * .8 / img.width, 230 / img.height), iw = img.width * sc, ih = img.height * sc;
@@ -854,7 +861,8 @@ async function exportPdf() {
     const a = document.createElement('a'); a.href = url; a.download = `meteo-sinistre-${sin}.pdf`; document.body.appendChild(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(url), 60000);
     const lost = on('storm') && lmUrls().ok && !mapOk;
-    xnote('PDF généré (' + pages.length + ' page' + (pages.length > 1 ? 's' : '') + ').' + (lost ? ' La carte de la foudre n’a pas pu être intégrée (carte inaccessible) : elle figure dans l’impression (bouton Imprimer).' : ''), lost);
+    if (lost) state.mapP = null;
+    xnote('PDF généré (' + pages.length + ' page' + (pages.length > 1 ? 's' : '') + ').' + (lost ? ' La carte de la foudre n’a pas pu être intégrée (carte inaccessible) : elle figure dans l’impression (bouton Imprimer). Détail : ' + ((state.mapLog || []).join(' ; ') || 'aucune réponse') + '.' : ''), lost);
   } catch (err) { xnote('Échec de la génération du PDF : ' + (err.message || err) + '. Utilisez le bouton Imprimer.', true); }
 }
 
@@ -872,7 +880,7 @@ function printReport() {
     const G = [['Vent', o.vent, [['gust', 'Rafale max', 'km/h', n0], ['wind', 'Vent moyen max', 'km/h', n0]]], ['Pluie', o.pluie, [['rain', 'Pluie du jour', 'mm', n1], ['rmax', 'Intensité max', 'mm/h', n1]]]];
     const rows2 = [];
     G.forEach(([lab, hi, ks]) => ks.filter(([k]) => au.v[k] != null).forEach(([k, l, u, f], i, arr) => {
-      const hot = hi && ((k === 'gust' && thr != null && au.v.gust >= thr) || ((k === 'rain' || k === 'rmax') && state.dS.rainHot));
+      const hot = hi && ((k === 'gust' && atThr(au.v.gust, thr)) || ((k === 'rain' || k === 'rmax') && state.dS.rainHot));
       rows2.push(`<tr${hot ? ' class="over"' : ''}>${i === 0 ? `<td rowspan="${arr.length}"><b>${lab}${hi ? ' ●' : ''}</b></td>` : ''}<td>${l}</td><td class="v"><b>${f(au.v[k])}</b> ${u}</td><td>${au.s[k]}</td></tr>`);
     }));
     rows2.push(`<tr${o.grele && state.hs.has ? ' class="over"' : ''}><td><b>Grêle${o.grele ? ' ●' : ''}</b></td><td colspan="3">${state.hs.verdict} (indicateur du modèle)</td></tr>`);
